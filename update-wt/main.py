@@ -1,71 +1,13 @@
-import os
-import webbrowser
-from pathlib import Path
 import json
-from datetime import datetime
 from dateutil.parser import parse
 import configparser
 import requests
-import hashlib
-import os
-import sys
-from rauth import OAuth2Service
 from tqdm import tqdm
 
+import helpers
+from models.timing_entry import TimingEntry
 config = configparser.ConfigParser()
 config.read("config.ini")
-
-
-def wakatime_auth():
-    if sys.version_info[0] == 3:
-        raw_input = input
-    client_id = config["DEFAULT"]["app_id"]
-    secret = config["DEFAULT"]["app_secret"]
-    service = OAuth2Service(
-        client_id=client_id,  # your App ID from https://wakatime.com/apps
-        client_secret=secret,  # your App Secret from https://wakatime.com/apps
-        name="update-wt",
-        authorize_url="https://wakatime.com/oauth/authorize",
-        access_token_url="https://wakatime.com/oauth/token",
-        base_url="https://wakatime.com/api/v1/",
-    )
-    redirect_uri = "https://localhost"
-    state = hashlib.sha1(os.urandom(40)).hexdigest()
-    params = {
-        "scope": "email,read_stats,write_logged_time",
-        "response_type": "code",
-        "state": state,
-        "redirect_uri": redirect_uri,
-    }
-    url = service.get_authorize_url(**params)
-    print("**** Visit this url in your browser ****".format(url=url))
-    print("*" * 80)
-    print(url)
-    print("*" * 80)
-    print(
-        "**** After clicking Authorize, paste code here and press Enter ****"
-    )
-    code = raw_input("Enter code from url: ")
-    # Make sure returned state has not changed for security reasons, and exchange
-    # code for an Access Token.
-    headers = {"Accept": "application/x-www-form-urlencoded"}
-    print("Getting an access token...")
-    session = service.get_auth_session(
-        headers=headers,
-        data={
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri,
-        },
-    )
-    config["DEFAULT"]["access_token"] = session.access_token
-
-
-def load_json_file(path):
-    path = Path(path)
-    with open(path, "r") as f:
-        j_file = json.load(f)
-        return j_file
 
 
 def timing_to_wakatime_mapper(j_object):
@@ -109,17 +51,6 @@ def timing_to_wakatime_mapper(j_object):
     except KeyError:
         wakatime_object['language'] = ''
     return wakatime_object
-
-
-def post_wakatime_object(w_obj):
-    url = config["DEFAULT"]["base_url"] + "users/current/external_durations.bulk"
-    headers = {
-        "Authorization": f"""Bearer {config['DEFAULT']['access_token']}"""
-    }
-    data = json.dumps(w_obj)
-    r = requests.post(url, data=data, headers=headers)
-
-    return json.loads(r.text)
 
 
 def main():
@@ -175,4 +106,34 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    test_json = """{
+    "activityTitle" : "Welcome | DANLSN",
+    "application" : "Safari",
+    "duration" : 1.9995522499084473,
+    "endDate" : "2022-04-25T00:29:25Z",
+    "id" : "3545166000830595840",
+    "path" : "https:\/\/danlsn.com.au",
+    "project" : "wp-danlsn-com-au",
+    "startDate" : "2022-04-25T00:29:23Z"
+  }"""
+    batch = []
+
+    with open('../data/wp-danlsn-com-au.json', 'r') as f:
+        test = json.load(f)
+
+    for item in test:
+        timing_obj = TimingEntry(item).to_wakatime()
+        batch.append(timing_obj)
+
+    with open('../data/wakatime_batch.json', 'w') as f:
+        f.write(json.dumps(batch))
+
+    chunks = [batch[x:x+1000] for x in range(0, len(batch), 1000)]
+    wakatime_response = []
+    for chunk in chunks:
+        response = helpers.post_wakatime_object(chunk)
+        wakatime_response.append(response)
+
+    with open('../data/wakatime_response.json', 'w') as f:
+        f.write(json.dumps(wakatime_response))

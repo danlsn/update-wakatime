@@ -1,0 +1,6 @@
+[DEFAULT]
+API_KEY =
+APP_ID =
+APP_SECRET =
+ACCESS_TOKEN =
+BASE_URL = https://wakatime.com/api/v1/
